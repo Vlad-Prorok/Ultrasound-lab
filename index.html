@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Виртуальная лаборатория: ультразвук</title>
+<style>
+  :root { --bg:#f5f7fa; --card:#ffffff; --ink:#1d2733; --muted:#5b6b7b; --accent:#1f6feb; --accent2:#e5534b; --line:#d6dde5; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background:var(--bg); color:var(--ink); }
+  header { padding:16px 20px; background:#16324f; color:#fff; }
+  header h1 { margin:0; font-size:1.25rem; }
+  header p { margin:4px 0 0; font-size:.9rem; opacity:.85; }
+  .tabs { display:flex; gap:8px; padding:12px 20px 0; flex-wrap:wrap; }
+  .tab { border:1px solid var(--line); background:#e9eef4; padding:8px 14px; border-radius:8px 8px 0 0; cursor:pointer; font-size:.95rem; }
+  .tab.active { background:var(--card); border-bottom-color:var(--card); font-weight:600; }
+  main { padding:0 20px 24px; }
+  .panel { display:none; background:var(--card); border:1px solid var(--line); border-radius:0 8px 8px 8px; padding:16px; }
+  .panel.active { display:block; }
+  .row { display:flex; gap:20px; flex-wrap:wrap; }
+  .col { flex:1 1 320px; min-width:280px; }
+  label { display:block; margin:10px 0 4px; font-size:.9rem; color:var(--muted); }
+  select, input[type=range] { width:100%; }
+  select { padding:6px; font-size:1rem; }
+  .out { margin-top:12px; padding:10px 12px; background:#eef4ff; border-left:4px solid var(--accent); border-radius:4px; font-size:1rem; line-height:1.6; }
+  .out b { font-variant-numeric: tabular-nums; }
+  canvas { width:100%; height:auto; background:#fff; border:1px solid var(--line); border-radius:6px; display:block; }
+  table { border-collapse:collapse; width:100%; margin-top:10px; font-size:.88rem; }
+  th, td { border:1px solid var(--line); padding:5px 8px; text-align:center; }
+  th { background:#eef2f6; }
+  button { padding:7px 12px; border:1px solid var(--accent); background:var(--accent); color:#fff; border-radius:6px; cursor:pointer; font-size:.9rem; }
+  button.ghost { background:#fff; color:var(--accent); }
+  .note { font-size:.82rem; color:var(--muted); margin-top:8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Виртуальная лаборатория: физические основы УЗИ</h1>
+  <p>Эксперимент 1: длина волны и частота. Эксперимент 2: отражение на границе двух сред.</p>
+</header>
+
+<div class="tabs">
+  <div class="tab active" data-tab="e1">Эксперимент 1. λ(f)</div>
+  <div class="tab" data-tab="e2">Эксперимент 2. Отражение</div>
+</div>
+
+<main>
+  <!-- ЭКСПЕРИМЕНТ 1 -->
+  <section class="panel active" id="e1">
+    <div class="row">
+      <div class="col">
+        <label for="f">Частота f, МГц: <b id="fval">3.5</b></label>
+        <input type="range" id="f" min="0.5" max="20" step="0.1" value="3.5">
+        <label for="m1">Среда распространения</label>
+        <select id="m1"></select>
+        <div class="out" id="out1"></div>
+        <p class="note">Формула: λ = v / f. Скорость звука v берётся из таблицы сред и считается постоянной.</p>
+        <button id="add1">Записать точку в таблицу</button>
+        <button class="ghost" id="clear1">Очистить таблицу</button>
+        <table id="tbl1"><thead><tr><th>Среда</th><th>f, МГц</th><th>v, м/с</th><th>λ, мм</th></tr></thead><tbody></tbody></table>
+      </div>
+      <div class="col">
+        <canvas id="c1" width="640" height="420"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- ЭКСПЕРИМЕНТ 2 -->
+  <section class="panel" id="e2">
+    <div class="row">
+      <div class="col">
+        <label for="ma">Среда 1 (из неё идёт волна)</label>
+        <select id="ma"></select>
+        <label for="mb">Среда 2 (в неё волна попадает)</label>
+        <select id="mb"></select>
+        <div class="out" id="out2"></div>
+        <p class="note">Формулы: Z = ρ·v;  R = ((Z₂ − Z₁)/(Z₂ + Z₁))²;  T = 1 − R.</p>
+        <button id="add2">Записать пару в таблицу</button>
+        <button class="ghost" id="clear2">Очистить таблицу</button>
+        <table id="tbl2"><thead><tr><th>Пара сред</th><th>Z₁, МРейл</th><th>Z₂, МРейл</th><th>R, %</th><th>T, %</th></tr></thead><tbody></tbody></table>
+      </div>
+      <div class="col">
+        <canvas id="c2" width="640" height="420"></canvas>
+        <p class="note">Кривая: доля отражённой энергии R в зависимости от отношения Z₂/Z₁ (логарифмическая ось). Красная точка — выбранная пара.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+/*PHYS_START*/
+// Справочные значения (усреднённые, из учебной и научной литературы)
+const MEDIA = [
+  { name: "Воздух",             rho: 1.2,    v: 343  },
+  { name: "Жировая ткань",      rho: 928,    v: 1450 },
+  { name: "Вода",               rho: 998,    v: 1482 },
+  { name: "Мягкие ткани (ср.)", rho: 1060,   v: 1540 },
+  { name: "Кровь",              rho: 1060,   v: 1570 },
+  { name: "Мышцы",              rho: 1070,   v: 1580 },
+  { name: "Кость (кортикальная)", rho: 1900, v: 4080 }
+];
+function wavelength_mm(v, f_MHz) { return (v / (f_MHz * 1e6)) * 1000; }
+function impedance_MRayl(m) { return (m.rho * m.v) / 1e6; }
+function reflection(Z1, Z2) { const r = (Z2 - Z1) / (Z2 + Z1); return r * r; }
+function transmission(Z1, Z2) { return 1 - reflection(Z1, Z2); }
+/*PHYS_END*/
+
+// ---------- интерфейс ----------
+const $ = id => document.getElementById(id);
+const fmt = (x, d) => Number(x).toLocaleString('ru-RU', { maximumFractionDigits: d, minimumFractionDigits: d });
+
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+  t.classList.add('active'); $(t.dataset.tab).classList.add('active');
+  draw1(); draw2();
+}));
+
+function fillSelect(sel, def) {
+  MEDIA.forEach((m, i) => { const o = document.createElement('option'); o.value = i; o.textContent = m.name; sel.appendChild(o); });
+  sel.value = def;
+}
+fillSelect($('m1'), 3); fillSelect($('ma'), 3); fillSelect($('mb'), 6);
+
+// ---------- эксперимент 1 ----------
+function draw1() {
+  const c = $('c1'), g = c.getContext('2d'), W = c.width, H = c.height;
+  const m = MEDIA[+$('m1').value], f = +$('f').value;
+  const L = 70, R = W - 20, T = 20, B = H - 55;
+  const fmin = 0.5, fmax = 20, lmax = wavelength_mm(m.v, fmin) * 1.05;
+  g.clearRect(0, 0, W, H);
+  g.strokeStyle = '#d6dde5'; g.fillStyle = '#5b6b7b'; g.font = '13px sans-serif'; g.lineWidth = 1;
+  for (let i = 0; i <= 5; i++) {
+    const y = B - (B - T) * i / 5, val = lmax * i / 5;
+    g.beginPath(); g.moveTo(L, y); g.lineTo(R, y); g.stroke();
+    g.textAlign = 'right'; g.fillText(fmt(val, 2), L - 6, y + 4);
+  }
+  for (let i = 0; i <= 4; i++) {
+    const fv = fmin + (fmax - fmin) * i / 4, x = L + (R - L) * i / 4;
+    g.beginPath(); g.moveTo(x, T); g.lineTo(x, B); g.stroke();
+    g.textAlign = 'center'; g.fillText(fmt(fv, 1), x, B + 18);
+  }
+  g.fillStyle = '#1d2733'; g.textAlign = 'center';
+  g.fillText('Частота f, МГц', (L + R) / 2, H - 12);
+  g.save(); g.translate(16, (T + B) / 2); g.rotate(-Math.PI / 2); g.fillText('Длина волны λ, мм', 0, 0); g.restore();
+  g.strokeStyle = '#1f6feb'; g.lineWidth = 2.5; g.beginPath();
+  for (let i = 0; i <= 200; i++) {
+    const fv = fmin + (fmax - fmin) * i / 200, lv = wavelength_mm(m.v, fv);
+    const x = L + (R - L) * (fv - fmin) / (fmax - fmin), y = B - (B - T) * lv / lmax;
+    i ? g.lineTo(x, y) : g.moveTo(x, y);
+  }
+  g.stroke();
+  const px = L + (R - L) * (f - fmin) / (fmax - fmin), py = B - (B - T) * wavelength_mm(m.v, f) / lmax;
+  g.fillStyle = '#e5534b'; g.beginPath(); g.arc(px, py, 6, 0, 7); g.fill();
+}
+function update1() {
+  const m = MEDIA[+$('m1').value], f = +$('f').value;
+  $('fval').textContent = fmt(f, 1);
+  $('out1').innerHTML = 'Скорость звука v = <b>' + fmt(m.v, 0) + '</b> м/с<br>Длина волны λ = <b>' + fmt(wavelength_mm(m.v, f), 3) + '</b> мм';
+  draw1();
+}
+$('f').addEventListener('input', update1); $('m1').addEventListener('change', update1);
+$('add1').addEventListener('click', () => {
+  const m = MEDIA[+$('m1').value], f = +$('f').value;
+  const tr = document.createElement('tr');
+  tr.innerHTML = '<td>' + m.name + '</td><td>' + fmt(f, 1) + '</td><td>' + fmt(m.v, 0) + '</td><td>' + fmt(wavelength_mm(m.v, f), 3) + '</td>';
+  $('tbl1').tBodies[0].appendChild(tr);
+});
+$('clear1').addEventListener('click', () => { $('tbl1').tBodies[0].innerHTML = ''; });
+
+// ---------- эксперимент 2 ----------
+function draw2() {
+  const c = $('c2'), g = c.getContext('2d'), W = c.width, H = c.height;
+  const L = 70, R = W - 20, T = 20, B = H - 55;
+  const xmin = Math.log10(0.0002), xmax = Math.log10(5000);
+  g.clearRect(0, 0, W, H);
+  g.strokeStyle = '#d6dde5'; g.fillStyle = '#5b6b7b'; g.font = '13px sans-serif'; g.lineWidth = 1;
+  for (let i = 0; i <= 5; i++) {
+    const y = B - (B - T) * i / 5;
+    g.beginPath(); g.moveTo(L, y); g.lineTo(R, y); g.stroke();
+    g.textAlign = 'right'; g.fillText(String(i * 20), L - 6, y + 4);
+  }
+  [0.001, 0.01, 0.1, 1, 10, 100, 1000].forEach(v => {
+    const x = L + (R - L) * (Math.log10(v) - xmin) / (xmax - xmin);
+    g.beginPath(); g.moveTo(x, T); g.lineTo(x, B); g.stroke();
+    g.textAlign = 'center'; g.fillText(String(v), x, B + 18);
+  });
+  g.fillStyle = '#1d2733'; g.textAlign = 'center';
+  g.fillText('Отношение Z₂ / Z₁ (лог. шкала)', (L + R) / 2, H - 12);
+  g.save(); g.translate(16, (T + B) / 2); g.rotate(-Math.PI / 2); g.fillText('Отражение R, %', 0, 0); g.restore();
+  g.strokeStyle = '#1f6feb'; g.lineWidth = 2.5; g.beginPath();
+  for (let i = 0; i <= 300; i++) {
+    const lx = xmin + (xmax - xmin) * i / 300, ratio = Math.pow(10, lx);
+    const r = reflection(1, ratio) * 100;
+    const x = L + (R - L) * i / 300, y = B - (B - T) * r / 100;
+    i ? g.lineTo(x, y) : g.moveTo(x, y);
+  }
+  g.stroke();
+  const a = MEDIA[+$('ma').value], b = MEDIA[+$('mb').value];
+  const Z1 = impedance_MRayl(a), Z2 = impedance_MRayl(b);
+  const lr = Math.log10(Z2 / Z1), r = reflection(Z1, Z2) * 100;
+  const px = L + (R - L) * (lr - xmin) / (xmax - xmin), py = B - (B - T) * r / 100;
+  g.fillStyle = '#e5534b'; g.beginPath(); g.arc(px, py, 6, 0, 7); g.fill();
+}
+function update2() {
+  const a = MEDIA[+$('ma').value], b = MEDIA[+$('mb').value];
+  const Z1 = impedance_MRayl(a), Z2 = impedance_MRayl(b);
+  const r = reflection(Z1, Z2) * 100, t = transmission(Z1, Z2) * 100;
+  $('out2').innerHTML = 'Z₁ = <b>' + fmt(Z1, 4) + '</b> МРейл,  Z₂ = <b>' + fmt(Z2, 4) + '</b> МРейл<br>Отражается: <b>' + fmt(r, 3) + '</b> %<br>Проходит: <b>' + fmt(t, 3) + '</b> %';
+  draw2();
+}
+$('ma').addEventListener('change', update2); $('mb').addEventListener('change', update2);
+$('add2').addEventListener('click', () => {
+  const a = MEDIA[+$('ma').value], b = MEDIA[+$('mb').value];
+  const Z1 = impedance_MRayl(a), Z2 = impedance_MRayl(b);
+  const tr = document.createElement('tr');
+  tr.innerHTML = '<td>' + a.name + ' → ' + b.name + '</td><td>' + fmt(Z1, 4) + '</td><td>' + fmt(Z2, 4) + '</td><td>' + fmt(reflection(Z1, Z2) * 100, 3) + '</td><td>' + fmt(transmission(Z1, Z2) * 100, 3) + '</td>';
+  $('tbl2').tBodies[0].appendChild(tr);
+});
+$('clear2').addEventListener('click', () => { $('tbl2').tBodies[0].innerHTML = ''; });
+
+update1(); update2();
+</script>
+</body>
+</html>
